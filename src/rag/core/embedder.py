@@ -10,7 +10,11 @@ import os
 import numpy as np
 
 if not os.getenv("HF_ENDPOINT"):
-    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"  # 清华镜像：HF 官方被墙，必须用镜像
+if not os.getenv("HF_HUB_DISABLE_SYMLINKS_WARNING"):
+    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+if not os.getenv("HF_HUB_ENABLE_HF_TRANSFER"):
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"  # 多进程高速下载（自动启用）
 if not os.getenv("HF_HUB_DISABLE_SYMLINKS_WARNING"):
     os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
