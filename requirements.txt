@@ -1,0 +1,22 @@
+# RAG 服务公司 · 核心依赖
+# 安装方式：
+#   1) uv venv .venv --python 3.13
+#   2) .venv/Scripts/python.exe -m ensurepip
+#   3) pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
+#   4) pip install "torch==2.6.0+cu124" --index-url https://download.pytorch.org/whl/cu124
+#
+# 注意：torch 必须走 PyTorch 官方 cu124 源单独装，否则装成 CPU 版（3060 显卡闲置）。
+
+torch==2.6.0+cu124      # 走官方 cu124 源单独安装
+faiss-cpu>=1.7
+chromadb>=0.4
+sentence-transformers>=2.2
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.7
+pypdf>=3.0
+python-docx>=0.8
+openpyxl>=3.1
+openai>=1.0
+python-dotenv>=1.0
+numpy>=1.24
