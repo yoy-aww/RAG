@@ -30,7 +30,7 @@ class Embedder:
         _torch = __import__("torch")
         device = "cuda" if _torch.cuda.is_available() else "cpu"
         self.model = SentenceTransformer(model_name, device=device)
-        self.dim = self.model.get_sentence_embedding_dimension()
+        self.dim = self.model.get_embedding_dimension()
 
     def embed(self, text: str) -> np.ndarray:
         if self.mode == "tfidf":
