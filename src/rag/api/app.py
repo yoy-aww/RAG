@@ -11,6 +11,7 @@ MVP 阶段接口：
 """
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ..core.config import Config
@@ -20,6 +21,7 @@ cfg = Config()
 _retriever = Retriever(doc_id="tenant_001", cfg=cfg)
 
 app = FastAPI(title="RAG 智能问答服务", version="0.1.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 # ---------- 请求/响应模型 ----------
