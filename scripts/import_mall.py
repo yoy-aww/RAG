@@ -11,7 +11,7 @@ import sqlite3
 import json
 import sys
 import os
-import requests
+import urllib.request
 
 DB_PATH = os.environ.get("MALL_DB", r"C:\yoyac-work\小程序商城\server\mall.db")
 RAG_URL = os.environ.get("RAG_URL", "http://localhost:8000")
@@ -19,16 +19,14 @@ RAG_URL = os.environ.get("RAG_URL", "http://localhost:8000")
 # ── 各表导出为文本 ──────────────────────────────────
 
 def export_categories(conn):
-    rows = conn.execute("SELECT name FROM categories ORDER BY sortOrder").fetchall()
-    lines = ["# 产品分类\n"]
-    for i, (name,) in enumerate(rows, 1):
-        lines.append(f"{i}. {name}")
-    return "\n".join(lines)
+    rows = conn.execute("SELECT name FROM categories ORDER BY id").fetchall()
+    names = "、".join(r[0] for r in rows)
+    return f"# 分类列表\n\n本店提供以下商品分类：{names}。"
 
 
 def export_products(conn):
     rows = conn.execute("""
-        SELECT p.name, p.originalPrice, p.discountedPrice, p.categoryId,
+        SELECT p.id, p.name, p.originalPrice, p.discountedPrice, p.categoryId,
                c.name as catName, p.description, p.stock, p.tags
         FROM products p
         LEFT JOIN categories c ON p.categoryId = c.id
@@ -36,10 +34,10 @@ def export_products(conn):
         ORDER BY p.originalPrice DESC
     """).fetchall()
     lines = ["# 商品列表\n"]
-    for name, price, disc_price, _, cat, desc, stock, tags in rows:
+    for pid, name, price, disc_price, _, cat, desc, stock, tags in rows:
         final = disc_price or price
         tag_list = json.loads(tags) if tags else []
-        lines.append(f"## {name}")
+        lines.append(f"## {name} [ID:{pid}]")
         lines.append(f"价格：¥{price}" + (f"（现价 ¥{disc_price}）" if disc_price else ""))
         if cat:
             lines.append(f"分类：{cat}")
@@ -174,8 +172,22 @@ def main():
 
         # 调 RAG 入库
         try:
-            r = requests.post(f"{RAG_URL}/ingest/file", files={"file": open(tmp, "rb")}, timeout=120)
-            data = r.json()
+            boundary = "----WebKitFormBoundary"
+            filename = os.path.basename(tmp)
+            with open(tmp, "rb") as f:
+                body = (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                    f"Content-Type: text/markdown\r\n\r\n"
+                ).encode("utf-8") + f.read() + f"\r\n--{boundary}--\r\n".encode("utf-8")
+            req = urllib.request.Request(
+                f"{RAG_URL}/ingest/file",
+                data=body,
+                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+                method="POST",
+            )
+            resp = urllib.request.urlopen(req, timeout=120)
+            data = json.loads(resp.read())
             n = data.get("chunks_added", 0)
             total_chunks += n
             print(f"    → 入库 {n} chunks\n")

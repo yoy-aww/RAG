@@ -9,6 +9,8 @@ MVP 阶段接口：
   GET  /info           知识库状态（chunk 数）
   DELETE /clear        清空当前知识库
 """
+import re
+
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +41,7 @@ class AskResponse(BaseModel):
     question: str
     answer: str
     sources: list[dict]
+    product_ids: list[str] = []
 
 
 class IngestResponse(BaseModel):
@@ -74,12 +77,21 @@ async def ask(req: AskRequest):
     """智能问答。"""
     if _retriever.chunk_count == 0:
         return AskResponse(question=req.question,
-                           answer="知识库为空，请先上传文档。", sources=[])
+                           answer="知识库为空，请先上传文档。", sources=[], product_ids=[])
     hits = _retriever.search(req.question, req.top_k)
     answer = _retriever.ask(req.question)
     sources = [{"doc": c.doc_name, "score": round(float(s), 4),
                 "text": c.content} for c, s in hits]
-    return AskResponse(question=req.question, answer=answer, sources=sources)
+
+    # 从 sources 文本中提取商品 ID
+    product_ids = []
+    for src in sources:
+        ids = re.findall(r'\[ID:([^\]]+)\]', src["text"])
+        for pid in ids:
+            if pid not in product_ids:
+                product_ids.append(pid)
+
+    return AskResponse(question=req.question, answer=answer, sources=sources, product_ids=product_ids)
 
 
 @app.post("/search", response_model=SearchResponse)

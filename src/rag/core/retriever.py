@@ -60,6 +60,7 @@ class Retriever:
             return 0
         chunks = self.chunker.split(text, self.doc_id, path.name)
         self.store.add_chunks(chunks)
+        self.store.save()
         return len(chunks)
 
     def ingest_dir(self, dirpath: str | Path, recursive: bool = True) -> int:

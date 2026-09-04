@@ -15,18 +15,23 @@ class Chunk:
 
 
 class TextChunker:
-    def __init__(self, chunk_size: int = 500, overlap: int = 50):
+    def __init__(self, chunk_size: int = 500, overlap: int = 50, min_length: int = 20):
         if overlap >= chunk_size:
             raise ValueError("overlap 必须小于 chunk_size")
         self.chunk_size = chunk_size
         self.overlap = overlap
+        self.min_length = min_length
 
     def split(self, text: str, doc_id: str, doc_name: str = "") -> list[Chunk]:
         if not text:
             return []
-        blocks = [b.strip() for b in text.split("\n") if b.strip()]
+        # 按段落（空行）分割，保证每个商品的标题+详情不拆分
+        blocks = [b.strip() for b in text.split("\n\n") if b.strip()]
         chunks: list[Chunk] = []
         for block in blocks:
+            # 过滤过短的 block，防止"6. 营养补充"这种短文本成为万能匹配
+            if len(block) < self.min_length:
+                continue
             if len(block) <= self.chunk_size:
                 chunks.append(Chunk(block, doc_id, len(chunks), doc_name))
                 continue
