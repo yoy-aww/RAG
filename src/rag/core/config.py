@@ -27,3 +27,13 @@ class Config:
     # 服务
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
+    # MySQL（Text-to-SQL 通道）
+    MYSQL_ENABLED: bool = os.getenv("MYSQL_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+    MYSQL_HOST: str = os.getenv("MYSQL_HOST", "127.0.0.1")
+    MYSQL_PORT: int = int(os.getenv("MYSQL_PORT", "3306"))
+    MYSQL_USER: str = os.getenv("MYSQL_USER", "rag_ro")
+    MYSQL_PASSWORD: str = os.getenv("MYSQL_PASSWORD", "")
+    MYSQL_DATABASE: str = os.getenv("MYSQL_DATABASE", "")
+    MYSQL_CHARSET: str = os.getenv("MYSQL_CHARSET", "utf8mb4")
+    MYSQL_READ_ONLY: bool = os.getenv("MYSQL_READ_ONLY", "true").lower() in ("1", "true", "yes", "on")
+    MYSQL_MAX_ROWS: int = int(os.getenv("MYSQL_MAX_ROWS", "100"))
