@@ -44,11 +44,12 @@ def _read_text(path: Path) -> str | None:
 
 
 class Retriever:
-    def __init__(self, doc_id: str, cfg: Config | None = None):
+    def __init__(self, doc_id: str, cfg: Config | None = None, embedder=None):
         self.cfg = cfg or Config()
         self.doc_id = doc_id
         self.chunker = TextChunker(self.cfg.CHUNK_SIZE, self.cfg.CHUNK_OVERLAP)
-        self.embedder = Embedder(self.cfg.EMBEDDING_MODEL, self.cfg.EMBEDDING_MODE)
+        # 多租户：embedder 由上层共享（get_embedder 单例），避免每租户重复加载模型
+        self.embedder = embedder or Embedder(self.cfg.EMBEDDING_MODEL, self.cfg.EMBEDDING_MODE)
         self.store = VectorStore(self.embedder, self.cfg.VECTOR_DB_DIR, self.doc_id)
         self.generator = Generator(self.cfg)
 
@@ -65,11 +66,20 @@ class Retriever:
 
     def ingest_dir(self, dirpath: str | Path, recursive: bool = True) -> int:
         dirpath = Path(dirpath)
-        total = 0
+        # 一次性读所有文件 + 分块 + embed，避免逐文件触发 embed_batch
+        # 导致 TFIDF 词表只用第一个文件 fit（词表极小、检索全乱）
+        all_chunks = []
         for p in (dirpath.rglob("*") if recursive else dirpath.iterdir()):
-            if p.is_file():
-                total += self.ingest_file(p)
-        return total
+            if not p.is_file():
+                continue
+            text = _read_text(p)
+            if not text:
+                continue
+            all_chunks.extend(self.chunker.split(text, self.doc_id, p.name))
+        if all_chunks:
+            self.store.add_chunks(all_chunks)
+            self.store.save()
+        return len(all_chunks)
 
     # ---- 检索 + 回答 ----
     def search(self, query: str, top_k: int | None = None) -> list:

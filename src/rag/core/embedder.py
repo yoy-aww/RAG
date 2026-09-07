@@ -22,15 +22,17 @@ class Embedder:
         self.mode = mode
         if mode == "tfidf":
             from sklearn.feature_extraction.text import TfidfVectorizer
+            import os
             self.dim = 1024  # 与 bge-large-zh 维度一致
             self._tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(1, 2),
                                           max_features=self.dim)
-            # 初始化时固定词汇表，后续只 transform 不 fit，保证向量空间一致
-            self._tfidf.fit([
-                "人工智能 深度学习 机器学习 自然语言处理",
-                "产品手册 售后服务 安装调试 操作说明",
-                "光伏组件 额定功率 系统配置 技术参数",
-            ])
+            # 懒 fit：首次 embed_batch 时用真实入库数据建词表，
+            # 并持久化到磁盘，避免重启后重新 fit 把查询词当语料。
+            # 旧版硬编码 fit 语料（人工智能/光伏）与商城数据字面完全不重叠，
+            # 导致所有查询返回全 0 向量、检索结果雷同。
+            self._tfidf_vocab_path = os.path.join(
+                os.environ.get("VECTOR_DB_DIR", "vector_db"), "tfidf_vectorizer.pkl")
+            self._tfidf_fitted = self._load_tfidf()
             return
         from sentence_transformers import SentenceTransformer
         import torch
@@ -46,11 +48,57 @@ class Embedder:
 
     def embed_batch(self, texts: list[str], batch_size: int = 32) -> np.ndarray:
         if self.mode == "tfidf":
-            return np.stack([self.embed(t) for t in texts])
+            if not self._tfidf_fitted and texts:
+                # 首次入库：用真实数据建词表，并持久化
+                self._tfidf.fit(texts)
+                self._tfidf_fitted = True
+                self._save_tfidf()
+            return np.stack([self._tfidf_embed(t) for t in texts])
         vecs = self.model.encode(texts, normalize_embeddings=True,
                                  batch_size=batch_size, show_progress_bar=False)
         return np.asarray(vecs, dtype=np.float32)
 
     def _tfidf_embed(self, text: str) -> np.ndarray:
+        if not self._tfidf_fitted:
+            # 还没 fit 就来了查询：用这条查询自己兜底 fit（不持久化，
+            # 等真正 ingest 时会被真实数据覆盖）
+            self._tfidf.fit([text])
+            self._tfidf_fitted = True
         vec = self._tfidf.transform([text]).toarray().flatten()
         return np.pad(vec, (0, self.dim - len(vec))) if len(vec) < self.dim else vec[:self.dim]
+
+    def _load_tfidf(self) -> bool:
+        """从磁盘加载已 fit 的 vectorizer。返回是否成功加载。"""
+        import pickle
+        try:
+            if os.path.exists(self._tfidf_vocab_path):
+                with open(self._tfidf_vocab_path, "rb") as f:
+                    self._tfidf = pickle.load(f)
+                self.dim = self._tfidf.max_features or self.dim
+                return True
+        except Exception as e:
+            print(f"[WARN] 加载 tfidf vectorizer 失败: {e}，将重新 fit")
+        return False
+
+    def _save_tfidf(self):
+        """持久化 vectorizer，下次启动直接 load。"""
+        import pickle
+        os.makedirs(os.path.dirname(self._tfidf_vocab_path), exist_ok=True)
+        try:
+            with open(self._tfidf_vocab_path, "wb") as f:
+                pickle.dump(self._tfidf, f)
+        except Exception as e:
+            print(f"[WARN] 保存 tfidf vectorizer 失败: {e}")
+
+
+# ---------- 单例缓存：多租户共享同一个模型 ----------
+# bge 模型约 1GB+，若每个租户各加载一份，显存/内存会线性爆炸。
+# 所有租户用同一 (model, mode)，共享同一 Embedder 实例。
+_EMBEDDER_CACHE: dict[tuple[str, str], Embedder] = {}
+
+
+def get_embedder(model_name: str = "BAAI/bge-large-zh-v1.5", mode: str = "semantic") -> Embedder:
+    key = (model_name, mode)
+    if key not in _EMBEDDER_CACHE:
+        _EMBEDDER_CACHE[key] = Embedder(model_name, mode)
+    return _EMBEDDER_CACHE[key]
