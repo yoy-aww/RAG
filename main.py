@@ -73,7 +73,74 @@ def main():
         print("知识库已清空")
         return 0
 
+    if cmd == "tenant":
+        return _tenant_cmd(args[1:])
+
     print(f"未知命令: {cmd}"); _usage(); return 1
+
+
+def _tenant_cmd(args):
+    """租户管理：create <名字> | list | delete <id> | reset-key <id> | key <id>"""
+    from src.rag.core.tenant_store import TenantStore
+    store = TenantStore()
+    if not args:
+        print("用法: tenant create <名字> | list | delete <id> | reset-key <id> | key <id>")
+        return 1
+    op = args[0]
+    if op == "create":
+        if len(args) < 2:
+            print("用法: tenant create <名字>"); return 1
+        rec = store.create(" ".join(args[1:]))
+        print(f"租户创建成功:")
+        print(f"  tenant_id: {rec['tenant_id']}")
+        print(f"  name:      {rec['name']}")
+        print(f"  api_key:   {rec['api_key']}  ← 保存好，之后不再完整显示")
+        return 0
+    if op == "list":
+        tenants = store.list()
+        if not tenants:
+            print("（暂无租户）"); return 0
+        print(f"{'tenant_id':<14} {'name':<12} {'api_key':<20} {'chunks':<7} 创建时间")
+        for t in tenants:
+            chunks = _peek_chunk_count_cli(t["tenant_id"])
+            print(f"{t['tenant_id']:<14} {t['name']:<12} {t['api_key_masked']:<20} {chunks:<7} {t['created_at']}")
+        return 0
+    if op in ("delete", "reset-key", "key"):
+        if len(args) < 2:
+            print(f"用法: tenant {op} <id>"); return 1
+        tid = args[1]
+        if op == "delete":
+            try:
+                store.delete(tid)
+                print(f"租户 {tid} 已删除")
+            except Exception as e:
+                print(f"删除失败: {e}"); return 1
+            return 0
+        if op == "reset-key":
+            try:
+                print(f"新 api_key: {store.reset_key(tid)}")
+            except Exception as e:
+                print(f"重置失败: {e}"); return 1
+            return 0
+        # key：查看完整 key
+        rec = store.get(tid)
+        if not rec:
+            print(f"租户 {tid} 不存在"); return 1
+        print(rec["api_key"])
+        return 0
+    print(f"未知操作: {op}"); return 1
+
+
+def _peek_chunk_count_cli(tenant_id: str) -> int:
+    """读 pkl 元数据拿 chunk 数，不加载模型。"""
+    try:
+        import pickle
+        p = Path(cfg.VECTOR_DB_DIR) / f"meta_{tenant_id}.pkl"
+        if p.exists():
+            return len(pickle.load(open(p, "rb")))
+    except Exception:
+        pass
+    return 0
 
 
 def _usage():

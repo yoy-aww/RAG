@@ -27,6 +27,10 @@ class Config:
     # 服务
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
+    # 多租户鉴权
+    ALLOW_ANON: bool = os.getenv("ALLOW_ANON", "true").lower() in ("1", "true", "yes", "on")
+    DEFAULT_API_KEY: str = os.getenv("DEFAULT_API_KEY", "")  # 默认租户 key；空则自动生成
+    ADMIN_API_KEY: str = os.getenv("ADMIN_API_KEY", "admin-dev-key")  # 管理端点鉴权，生产必改
     # MySQL（Text-to-SQL 通道）
     MYSQL_ENABLED: bool = os.getenv("MYSQL_ENABLED", "false").lower() in ("1", "true", "yes", "on")
     MYSQL_HOST: str = os.getenv("MYSQL_HOST", "127.0.0.1")
