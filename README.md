@@ -18,61 +18,146 @@
 |------|------|------|
 | Python | 3.11+ | 本地 venv |
 | torch | 2.6.0+cu124 | CUDA 版，RTX 显卡加速 |
-| Ollama | 任意最新版 | 本地 LLM，模型 `qwen2.5:7b` |
+| Ollama | 任意最新版 | 本地 LLM，模型 `qwen3:8b` |
 
 ## 快速开始
+
+> 以下为实测可用的完整启动流程（Windows 环境）。
 
 ### 1. 创建虚拟环境
 
 ```bash
 cd C:\yoyac-work\RAG
 uv venv .venv --python 3.11
-.venv\Scripts\activate
 ```
 
 ### 2. 安装依赖
 
-```bash
-# CPU 依赖（走国内镜像）
-pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
+> **注意**：`requirements.txt` 含中文注释，低版本 pip 会报 `UnicodeDecodeError`，
+> 因此用 `uv pip install` 逐包安装，避免编码问题。
 
-# CUDA 版 torch（必须单独装，否则装成 CPU 版，显卡闲置）
-pip install --upgrade "torch==2.6.0+cu124" --index-url https://download.pytorch.org/whl/cu124
+```bash
+# 核心 CPU 依赖（走国内镜像，速度快）
+uv pip install --python .venv/Scripts/python.exe \
+  faiss-cpu sentence-transformers fastapi "uvicorn[standard]" \
+  python-multipart pypdf python-docx openpyxl openai python-dotenv \
+  numpy pymysql \
+  -i https://mirrors.aliyun.com/pypi/simple
+
+# CUDA 版 torch（必须单独装，阿里云镜像无 cu124 版本，走 PyTorch 官方源）
+uv pip install --python .venv/Scripts/python.exe \
+  "torch==2.6.0+cu124" \
+  --index-url https://download.pytorch.org/whl/cu124
 ```
+
+> 如果没有 NVIDIA 显卡或不需要 GPU 加速，可跳过 CUDA torch，
+> 上面 uv 安装的 CPU 版 torch 已可正常运行。
 
 ### 3. 配置
 
 ```bash
+# 首次需要创建 .env（已有则跳过）
 copy .env.example .env
 ```
 
-关键配置项：
+当前 `.env` 实际配置：
 
 ```env
-EMBEDDING_MODE=semantic          # 语义检索（需联网下载模型，首次约 2 分钟）
-EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
+EMBEDDING_MODE=tfidf               # tfidf 模式（免下载模型，秒启）
+EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+CHUNK_SIZE=300
+CHUNK_OVERLAP=50
+TOP_K=5
 LLM_BASE_URL=http://localhost:11434/v1
-LLM_MODEL=qwen2.5:7b
+LLM_MODEL=qwen3:8b
+HOST=127.0.0.1
 PORT=8000
+ALLOW_ANON=true
 ```
+
+> 如需语义检索，将 `EMBEDDING_MODE` 改为 `semantic`，首次启动会下载嵌入模型（~2 分钟）。
 
 ### 4. 启动 Ollama（本地 LLM）
 
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen3:8b
 ollama serve
 ```
 
 ### 5. 启动 RAG 服务
 
 ```bash
-python main.py serve
+.venv\Scripts\python.exe main.py serve
+```
+
+启动成功后输出：
+
+```
+启动 RAG 服务 http://127.0.0.1:8000
+文档: http://127.0.0.1:8000/docs
+INFO:     Started server process [xxxx]
+INFO:     Application startup complete.
 ```
 
 验证：
-- API 文档：http://localhost:8000/docs
-- 健康检查：http://localhost:8000/info
+- API 文档：http://127.0.0.1:8000/docs
+- 健康检查：http://127.0.0.1:8000/info（返回 JSON：`{"tenant_id":"tenant_001","chunks":60,"model":"BAAI/bge-small-zh-v1.5","llm":"qwen3:8b"}`）
 - 嵌入浮窗演示：打开 `web/demo/index.html`
+
+### 常见启动问题
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `No module named 'fastapi'` | 依赖未安装 | 执行步骤 2 安装依赖 |
+| `No module named pip` | venv 未初始化 pip | `.venv/Scripts/python.exe -m ensurepip` |
+| `UnicodeDecodeError: 'gbk'` | 低版本 pip 读 requirements.txt 中文注释失败 | 升级 pip 或改用 `uv pip install` 逐包安装 |
+| `Errno 10048 端口占用` | 8000 端口已有服务 | 先关闭已有进程，或修改 `.env` 中 `PORT` |
+| Ollama 连接失败 | Ollama 未启动 | 先执行 `ollama serve` |
+
+## 日常启动
+
+> 首次按「快速开始」完成环境搭建后，后续每次启动只需以下 **两步**：
+
+### 1. 启动 Ollama
+
+```bash
+ollama serve
+```
+
+> Ollama 通常开机后常驻后台，如果已在运行可跳过此步。
+> 验证：浏览器访问 http://localhost:11434 应返回 `Ollama is running`。
+
+### 2. 启动 RAG 服务
+
+```bash
+cd C:\yoyac-work\RAG
+.venv\Scripts\python.exe main.py serve
+```
+
+> 如果使用 PowerShell 且已激活虚拟环境（`.venv\Scripts\activate`），可直接 `python main.py serve`。
+
+启动成功后验证：
+- 健康检查：http://127.0.0.1:8000/info
+- API 文档：http://127.0.0.1:8000/docs
+
+### 一键启动脚本（可选）
+
+如果嫌手动两步麻烦，可使用项目自带的启动脚本：
+
+| 方式 | 命令 | 特点 |
+|------|------|------|
+| BAT 脚本 | `双击 start_rag.bat` | 前台运行，崩溃 3 秒自动重启 |
+| PowerShell | `.\start_rag.ps1` | 隐藏窗口后台启动 |
+| 守护进程 | `python start_daemon.py` | 日志写入 rag.log，崩溃自动重启 |
+
+> **注意**：这些脚本不会自动启动 Ollama，需确保 Ollama 已在运行。
+
+### 停止服务
+
+| 方式 | 操作 |
+|------|------|
+| 前台运行 | `Ctrl+C` |
+| 后台/守护进程 | 关闭对应终端窗口，或任务管理器结束 `python.exe` 进程 |
 
 ## 常用命令
 
