@@ -7,7 +7,7 @@
 #
 # 注意：torch 必须走 PyTorch 官方 cu124 源单独装，否则装成 CPU 版（3060 显卡闲置）。
 
-torch==2.6.0+cu124      # 走官方 cu124 源单独安装
+torch==2.6.0      # CPU build for GPU-less server (upstream pins +cu124 for RTX 3060)
 faiss-cpu>=1.7
 chromadb>=0.4
 sentence-transformers>=2.2
